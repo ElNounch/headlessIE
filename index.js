@@ -1,41 +1,42 @@
 var path = require('path')
+var fs = require('fs')
 var child_process = require('child_process')
-var asap = require('asap')
+var asyncify = require('dezalgo')
 
-var fullPath = path.join(__dirname, '/bin/headlessIE.exe')
-
-function asapify( cb ) {
-	var th = this
-	return function () {
-		asap( cb.apply( th, arguments ) )
-	}
-}
+var versionsRE = /HeadlessIE ((?:\d+)(?:\.(?:\d+)){0,3}) \(Internet Explorer ((?:\d+)(?:\.(?:\d+)){0,3})\)/g
+var fullPath = path.join( __dirname, '/bin/headlessIE.exe' )
 
 exports.command = function command(callback) {
-	asapify(callback)
+    var cb = asyncify(callback)
 
-	callback( undefined, fullPath )
+    fs.exists( fullPath, function exeExistCommand( present ) {
+        if( present ) {
+            cb( undefined, fullPath )
+        } else {
+            cb( 'missing headlessIE executable from package', undefined )
+        }
+    })
 }
 
 exports.version = function version(callback) {
-	asapify(callback)
+    var cb = asyncify(callback)
 
     try {
-        var vers = ''
-        var proc = child_process.spawn( fullPath, [ '--version' ] )
-
-        proc.stdout.on( 'data', function (data) {
-            vers += data
-        })
-
-        proc.on('close', function (code) {
-            if( ( code == 0 ) && ( /^(\d+)(\.(\d+)){0,3}/.test( vers ) ) ) {
-                callback( undefined, vers )
+        fs.exists( fullPath, function exeExistVersion( present ) {
+            if( present ) {
+                var proc = child_process.execFile( fullPath, [ '--version' ], function VersionRunner( err, stdout ) {
+                    matches = versionsRE.exec( stdout )
+                    if( matches ) {
+                        cb( undefined, matches[2] )
+                    } else {
+                        cb( 'Wrong program return to --version argument', undefined )
+                    }
+                })
             } else {
-                callback( "Wrong program return to --version argument", undefined )
+                cb( 'missing headlessIE executable from package', undefined )
             }
         })
     } catch( e ) {
-        callback( "Unable to launch program", undefined )
+        cb( 'Unable to launch program', undefined )
     }
 }

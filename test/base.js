@@ -12,23 +12,36 @@ function createRandomLocalAddress() {
 }
 
 test('return values test', function (t) {
-    t.plan(5)
+    t.plan(2)
 
-    headlessIE.version( function(err,reported_version) {
-        t.ok( typeof err === 'undefined', 'no error while looking for version' )
-        t.ok( typeof reported_version === 'string', 'version returned a string : "' + reported_version + '"' )
+    t.test('version', function(tV) {
+        tV.plan(1)
+        headlessIE.version( function(err,reported_version) {
+            if( err ) {
+                tV.fail( 'problem while looking for version : ' + err )
+            } else {
+                tV.ok( typeof reported_version === 'string', 'version returned a string : "' + reported_version + '"' )
+            }
+        })
     })
 
-    headlessIE.command( function(err,reported_path) {
-        t.ok( typeof err === 'undefined', 'no error while looking for command' )
-        var stat = fs.statSync( reported_path )
-        t.ok( stat, 'path exist...')
-        t.ok( stat.isFile(), '... and is a file')
+    t.test('command', function(tC) {
+        headlessIE.command( function( err, reported_cmd ) {
+            if( err ) {
+                tC.fail( 'problem while looking for path : ' + err )
+                tC.end()
+            } else {
+                fs.stat( reported_cmd, function( err, stat ) {
+                    tC.ok( stat, 'path exist...' )
+                    tC.ok( stat.isFile(), '... and is a file' )
+                    tC.end()
+                })
+            }
+        })
     })
 })
 
-test('functionnal test', { timeout: 20000 }, function (t) {
-    t.plan(5)
+test('functionnal test', { timeout: 30000 }, function (t) {
     var app = express()
     var server
     var proc
@@ -37,34 +50,57 @@ test('functionnal test', { timeout: 20000 }, function (t) {
     var local_addr = createRandomLocalAddress()
 
     app.get('/entrance', function (req, res) {
-      res.send('<html><head><script>location.href="/javascript_passed"</script><body></body></html>')
-      t.pass('entrance page accessed')
+        res.setHeader( 'Connection', 'close' )
+        res.setHeader( 'Content-Type', 'text/html' )
+        res.send( '<html><head><script>location.href="/javascript_passed"</script><body></body></html>' )
+        res.end()
+        t.pass( 'entrance page accessed' )
     })
     app.get('/javascript_passed', function (req, res) {
-      res.send('Job done !')
-      t.pass('javascript worked')
-      job_done = true
-      clearTimeout( timer )
-      proc.kill()
-      server.close()
+        res.setHeader( 'Connection', 'close' )
+        res.setHeader( 'Content-Type', 'text/plain' )
+        res.send( 'Job done !' )
+        res.end()
+        t.pass( 'javascript worked' )
+        job_done = true
+        clearTimeout( timer )
+        proc.kill()//'SIGHUP')
+        server.close()
     })
 
     server = app.listen(8000, local_addr)
 
     timer = setTimeout( function onTimeOut() {
-        proc.kill()
+        proc.kill('SIGHUP')
         server.close()
-    }, 15000)
+    }, 25000)
 
     headlessIE.command( function(err,reported_path) {
-        t.ok( typeof err === 'undefined', 'no error while looking for command' )
-        proc = child_process.spawn( reported_path, [ 'http://' + local_addr + ':8000/entrance' ] )
+        if( err ) {
+            t.fail( 'problem while looking for path : ' + err )
+            clearTimeout( timer )
+            server.close()
+            t.end()
+        } else {
+            proc = child_process.spawn( reported_path, [ 'http://' + local_addr + ':8000/entrance' ] )
 
-        proc.on('exit', function onIEExit( code, signal ) {
-            if( job_done ) {
-                t.ok( code === null, 'exit code is correct')
-                t.ok( signal === 'SIGTERM', 'killed by signal')
-            }
-        })
+            proc.stdout.on( 'data', function onStdout( data ) {
+                t.comment( 'console message : ' + data )
+            })
+
+            proc.stderr.on( 'data', function onStderr( data ) {
+                t.comment( 'error message : ' + data )
+            })
+
+            proc.on('exit', function onIEExit( code, signal ) {
+                if( job_done ) {
+                    t.ok( code === null, 'exit code is correct' )
+                    t.ok( signal === 'SIGTERM', 'killed by signal' )
+                } else {
+                    t.fail( 'unexpected browser quit' )
+                }
+                t.end()
+            })
+        }
     })
 })

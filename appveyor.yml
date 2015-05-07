@@ -4,15 +4,12 @@ version: 1.0.0-{build}
 #matrix:
 #  fast_finish: true
 
-# Download source using zip interface of GitHub
-shallow_clone: true
-
 environment:
   matrix:
     # Test against thus versions of Node.js
-    - nodejs_version: 0.8
-    - nodejs_version: 0.10
     - nodejs_version: 0.12
+    - nodejs_version: 0.10
+    - nodejs_version: 0.8
     # io.js
     - nodejs_version: 1
 
@@ -22,6 +19,7 @@ install:
   - ps: Install-Product node $env:nodejs_version
   # Update npm itself
   - npm install -g npm
+  - set PATH=%APPDATA%\npm;%APPVEYOR_BUILD_FOLDER%\node_modules\.bin;%PATH%
   # Install modules
   - npm install
 
